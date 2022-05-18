@@ -1,0 +1,137 @@
+#define PULSE_PIN D2  
+#define LED_PIN D7    
+#include<ESP8266WiFi.h>;
+#include<WiFiClient.h>;
+#include<ThingSpeak.h>;
+const char*ssid="realme 5 pro";
+const char*password="shakthivel";
+
+const char* host = "maker.ifttt.com";
+const char* apiKey = "nUEZRMgglkTKT5s58w2XJy5aIYvIS6J-xyivBX_IYJi";
+
+int pin = 2;
+volatile int state = false;
+volatile int flag = false;
+
+
+WiFiClient client;
+unsigned long myChannelNumber=955691;
+const char* myWriteAPIKey="NUO5GROFD2SXS5T2";
+
+
+volatile long pulseCount=0;
+float calibrationFactor = 4.5;
+float flowRate;
+int flowMilliLitres;
+unsigned long totalMilliLitres;
+float totalLitres;
+
+unsigned long oldTime;
+
+void ICACHE_RAM_ATTR pulseCounter()
+{
+  pulseCount++;
+}
+
+void setup() {
+  
+Serial.begin(9600);
+
+  pulseCount        = 0;
+  flowRate          = 0.0;
+  flowMilliLitres   = 0;
+  totalMilliLitres  = 0;
+  oldTime           = 0; 
+
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);  
+ 
+  pinMode(PULSE_PIN, INPUT);
+
+  attachInterrupt(PULSE_PIN, pulseCounter, FALLING);
+  WiFi.begin(ssid,password);
+  ThingSpeak.begin(client);
+  delay(100);
+    //Serial.println("Preparing the Door Status Monitor project...");
+    
+    pinMode(pin, OUTPUT);
+
+    Serial.println();
+    Serial.println();
+    //Serial.print("Connecting to ");
+    Serial.println(ssid);
+    
+    WiFi.begin(ssid, password);
+    
+    while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+    }
+  
+    Serial.println("");
+    Serial.println("WiFi connected");  
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());  
+}
+
+void loop() {
+
+     
+          //Serial.print("connecting to ");
+          //Serial.println(host);
+          
+          WiFiClient client;
+          const int httpPort = 80;
+          if (!client.connect(host, httpPort)) {
+            Serial.println("connection failed");
+            return;
+          }
+    
+          String url = "/trigger/water_flow/with/key/";
+          url += apiKey;
+          
+          //Serial.print("Requesting URL: ");
+          //Serial.println(url);
+          client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+                       "Host: " + host + "\r\n" + 
+                       "Content-Type: application/x-www-form-urlencoded\r\n" + 
+                       "Content-Length: 13\r\n\r\n" +
+                       "value1=" + totalLitres + "\r\n"
+                       "value2=" + flowRate + "\r\n"
+                       "value3=" + flowMilliLitres + "\r\n");
+          flag = false;
+        delay(10);
+
+
+
+   if((millis() - oldTime) > 1000)
+  {
+    detachInterrupt(PULSE_PIN);
+    flowRate = ((1000.0 / (millis() - oldTime)) * pulseCount) / calibrationFactor;
+    oldTime = millis();
+    flowMilliLitres = (flowRate / 60) * 1000;
+    totalMilliLitres += flowMilliLitres;     
+    totalLitres = totalMilliLitres * 0.001;
+    unsigned int frac;   
+    Serial.print("flowrate: ");
+    Serial.print(int(flowRate));  
+    Serial.print(".");             
+    frac = (flowRate - int(flowRate)) * 10;
+    Serial.print(frac, DEC) ;      
+    Serial.print("L/min");
+    Serial.print("  Current Liquid Flowing: ");             
+    Serial.print(flowMilliLitres);
+    Serial.print("mL/Sec");
+    Serial.print("  Output Liquid Quantity: ");             
+    Serial.print(totalLitres);
+    Serial.println("L");
+    
+
+    pulseCount = 0;
+
+    attachInterrupt(PULSE_PIN, pulseCounter, FALLING);    
+  }
+  ThingSpeak.writeField(myChannelNumber,1,totalLitres,myWriteAPIKey);
+  ThingSpeak.writeField(myChannelNumber,2,flowRate,myWriteAPIKey);
+  ThingSpeak.writeField(myChannelNumber,3,flowMilliLitres,myWriteAPIKey);
+}
